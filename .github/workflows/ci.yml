@@ -37,17 +37,25 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-          ssh -o StrictHostKeyChecking=no root@${{ secrets.ECS_IP }} << 'EOF'
+          # 定义变量，避免在远程 shell 中使用未定义变量
+          ACR_REGISTRY=${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE=${{ secrets.ACR_NAMESPACE }}
+          ACR_PROJECT=${{ secrets.ACR_PROJECT }}
+          IMAGE_NAME=$ACR_REGISTRY/$ACR_NAMESPACE/$ACR_PROJECT:latest
+
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.ECS_IP }} << EOF
+            set -e  # 出错立即停止
+
             echo "Pulling latest image..."
-            docker pull ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_PROJECT }}:latest
+            docker pull \$IMAGE_NAME
 
             echo "Stopping and removing old container..."
-            docker stop ${ACR_PROJECT} || true
-            docker rm ${ACR_PROJECT} || true
+            docker stop \$ACR_PROJECT || true
+            docker rm \$ACR_PROJECT || true
 
             echo "Starting new container..."
             docker run -d \
-              --name ${ACR_PROJECT} \
+              --name \$ACR_PROJECT \
               -p 80:80 \
-              ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_PROJECT }}:latest
+              \$IMAGE_NAME
           EOF
