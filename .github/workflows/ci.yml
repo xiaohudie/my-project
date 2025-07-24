@@ -1,0 +1,53 @@
+name: Vue 项目自动部署到阿里云 ECS
+
+on:
+  push:
+    branches:
+      - main  # 当 main 分支有提交时触发
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📦 检出代码
+        uses: actions/checkout@v3
+
+      - name: 🔧 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: 🐳 登录阿里云 ACR
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: 🧱 构建并推送 Docker 镜像到 ACR
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_PROJECT }}:latest
+
+      - name: 🚀 通过 SSH 部署到 ECS
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.ECS_IP }} << 'EOF'
+            echo "Pulling latest image..."
+            docker pull ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_PROJECT }}:latest
+
+            echo "Stopping and removing old container..."
+            docker stop ${ACR_PROJECT} || true
+            docker rm ${ACR_PROJECT} || true
+
+            echo "Starting new container..."
+            docker run -d \
+              --name ${ACR_PROJECT} \
+              -p 80:80 \
+              ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_PROJECT }}:latest
+          EOF

@@ -58,7 +58,7 @@ export default defineComponent({
 
     const downloadResume = (): void => {
       const link = document.createElement('a');
-      link.href = '/ym.pdf';
+      link.href = '/public/ym.pdf';
       link.download = 'ym.pdf';
       link.click();
     };
