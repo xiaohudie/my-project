@@ -19,11 +19,6 @@ const routes: Array<RouteRecordRaw> = [
     name: 'Fun',
     component: Fun
   },
-  {
-    path: '/fun1',
-    name: 'Fun',
-    component: Fun
-  }
 ];
 
 const router = createRouter({
