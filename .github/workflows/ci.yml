@@ -10,12 +10,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ==================== 第一步：检出代码 ====================
       - name: 📦 检出代码
         uses: actions/checkout@v3
 
+      # ==================== 第二步：设置 Node.js 环境 ====================
+      - name: 🔧 设置 Node.js 环境
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'yarn'
+
+      # ==================== 第三步：安装依赖 ====================
+      - name: 📥 安装项目依赖
+        run: yarn install
+
+      # ==================== 第四步：打包 Vue 项目 ====================
+      - name: 🏗️ 打包 Vue 项目
+        run: yarn build
+
+      # ==================== 第五步：复制 public 静态资源到 dist ====================
+      - name: 📁 复制 public 目录静态资源到 dist
+        run: |
+          echo "复制 public 目录下的静态资源（图片、PDF等）到 dist..."
+          cp -r public/* dist/ 2>/dev/null || true
+          echo "dist 目录内容："
+          ls -la dist/
+
+      # ==================== 第六步：设置 Docker Buildx ====================
       - name: 🔧 设置 Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      # ==================== 第七步：登录阿里云 ACR ====================
       - name: 🐳 登录阿里云 ACR
         uses: docker/login-action@v2
         with:
@@ -23,6 +49,7 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      # ==================== 第八步：构建并推送 Docker 镜像 ====================
       - name: 🧱 构建并推送 Docker 镜像到 ACR
         uses: docker/build-push-action@v4
         with:
@@ -31,28 +58,41 @@ jobs:
           tags: |
             ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/${{ secrets.ACR_PROJECT }}:latest
 
+      # ==================== 第九步：部署到 ECS ====================
       - name: 🚀 通过 SSH 部署到 ECS
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-          # 直接在 SSH 命令中使用完整的镜像名，避免变量传递问题
+          # 设置镜像名称
           ACR_REGISTRY="${{ secrets.ACR_REGISTRY }}"
           ACR_NAMESPACE="${{ secrets.ACR_NAMESPACE }}"
           ACR_PROJECT="${{ secrets.ACR_PROJECT }}"
+          ACR_PASSWORD="${{ secrets.ACR_PASSWORD }}"
+          ACR_USERNAME="${{ secrets.ACR_USERNAME }}"
           IMAGE_NAME="$ACR_REGISTRY/$ACR_NAMESPACE/$ACR_PROJECT:latest"
 
           ssh -o StrictHostKeyChecking=no root@${{ secrets.ECS_IP }} "set -e
-            echo 'Pulling latest image...'
+            echo '========== 1. 登录阿里云 ACR =========='
+            docker login -u $ACR_USERNAME -p $ACR_PASSWORD $ACR_REGISTRY
+
+            echo '========== 2. 拉取最新镜像 =========='
             docker pull $IMAGE_NAME
             
-            echo 'Stopping and removing old container...'
+            echo '========== 3. 停止并删除旧容器 =========='
             docker stop $ACR_PROJECT || true
             docker rm $ACR_PROJECT || true
             
-            echo 'Starting new container...'
+            echo '========== 4. 启动新容器 =========='
             docker run -d \
               --name $ACR_PROJECT \
+              --restart always \
               -p 80:80 \
-              $IMAGE_NAME"
+              $IMAGE_NAME
+
+            echo '========== 5. 查看运行状态 =========='
+            docker ps | grep $ACR_PROJECT
+
+            echo '✅ 部署完成！访问地址：http://${{ secrets.ECS_IP }}'
+          "
