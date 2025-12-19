@@ -33,9 +33,12 @@ jobs:
       - name: 📁 复制 public 目录静态资源到 dist
         run: |
           echo "复制 public 目录下的静态资源（图片、PDF等）到 dist..."
-          cp -r public/* dist/ 2>/dev/null || true
+          # 注意：排除 index.html，避免覆盖 webpack 打包生成的 index.html
+          find public -type f ! -name 'index.html' -exec cp {} dist/ \;
           echo "dist 目录内容："
           ls -la dist/
+          echo "验证 index.html 包含 bundle.js 引用："
+          grep -o 'bundle.js' dist/index.html || echo "警告：index.html 中没有找到 bundle.js 引用！"
 
       # ==================== 第六步：设置 Docker Buildx ====================
       - name: 🔧 设置 Docker Buildx
